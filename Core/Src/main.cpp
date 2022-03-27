@@ -320,7 +320,10 @@ int main(void)
 			for (k = 0; k < 3; k++){
 				gpsOutData[j][k] = Pos_KF[j][k]-mean_Pos_KF[k];
 			}
-			printf("%lf %lf %lf\n", Pos_KF[j][0], Pos_KF[j][1], Pos_KF[j][2]);
+			uint8_t results[68] = "%10.10lf %10.10lf %10.10lf\r\n";
+			sprintf((char *) results, "%10.10lf %10.10lf %10.10lf\r\n", Pos_KF[j][0], Pos_KF[j][1], Pos_KF[j][2]);
+			HAL_UART_Transmit(&hlpuart1, results, 68, 50000);
+			//printf("%10.10lf %10.10lf %10.10lf\r\n", Pos_KF[j][0], Pos_KF[j][1], Pos_KF[j][2]);
 		}
 
 		// Done!
