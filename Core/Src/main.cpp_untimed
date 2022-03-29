@@ -42,8 +42,6 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
- LPTIM_HandleTypeDef hlptim1;
-
 UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
@@ -54,7 +52,6 @@ UART_HandleTypeDef hlpuart1;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
-static void MX_LPTIM1_Init(void);
 /* USER CODE BEGIN PFP */
 #ifdef __GNUC__
 /* With GCC, small printf (option LD Linker->Libraries->Small printf
@@ -68,6 +65,7 @@ static void MX_LPTIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 double gpsdata[25][16] = {{-11602023.9489137008786201,14063117.4931115992367268,18811434.3112745992839336,-20853271.5736341997981071,1806977.2118581600952893,16542682.1237923000007868,-14355926.0172339994460344,8650961.8841098193079233,20736354.9805863983929157,7475239.6753052901476622,12966181.2771377004683018,21931576.7921750992536545,23568206.4173782989382744,26183921.4577450007200241,24652215.2627705000340939,25606982.9330466017127037},
 		{-11602700.4096150007098913,14060708.1637619994580746,18812823.4023028016090393,-20855049.9291185997426510,1805887.1306580700911582,16540582.4659656994044781,-14356344.1729805991053581,8648384.4768619798123837,20737164.3397033996880054,7472917.3215693095698953,12967714.4596338998526335,21931442.6029887981712818,23568427.7909861989319324,26184404.1127416007220745,24652621.9011856988072395,25606499.4748000986874104},
 		{-11603377.0261803008615971,14058298.6961425002664328,18814212.0761809013783932,-20856828.1167653985321522,1804797.2804981300141662,16538482.4609003998339176,-14356762.4791433997452259,8645806.9947465099394321,20737973.2627678997814655,7470595.0720982002094388,12969247.7736987993121147,21931307.9468086995184422,23568650.0894557014107704,26184884.7086125016212463,24653025.2764103002846241,25606016.6971120014786720},
@@ -225,6 +223,7 @@ void error(const char * msg)
 {
     fprintf(stderr, "%s\n", msg);
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -243,7 +242,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  // Timer prescaler is x64 -> 2.65625 MHz
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -256,7 +255,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
-  MX_LPTIM1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -265,9 +263,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  uint32_t start_time = LPTIM1->CNT; // 125 kHz
-	  uint32_t test_time;
-		HAL_LPTIM_Counter_Start(&hlptim1, 0xFFFF);
+	  	uint16_t start_time = LPTIM_CNT;
+	  	HAL_TIM_Base_Start(&hlptim1);
 	  ekf_t ekf;
 		ekf_init(&ekf, Nsta, Mobs);
 
@@ -298,6 +295,8 @@ int main(void)
 
 			readdata(gpsdata[j], SV_Pos, SV_Rho); //readdata from new array
 
+
+
 			model(&ekf, SV_Pos);
 
 			ekf_step(&ekf, SV_Rho);
@@ -318,13 +317,10 @@ int main(void)
 
 		// Dump filtered positions minus their means
 		for (j=0; j<25; ++j) { //dump into 25x3 array
-	//	        fprintf(ofp, "%f,%f,%f\n",
-	//	                Pos_KF[j][0]-mean_Pos_KF[0], Pos_KF[j][1]-mean_Pos_KF[1], Pos_KF[j][2]-mean_Pos_KF[2]);//change into array
+  //	        fprintf(ofp, "%f,%f,%f\n",
+  //	                Pos_KF[j][0]-mean_Pos_KF[0], Pos_KF[j][1]-mean_Pos_KF[1], Pos_KF[j][2]-mean_Pos_KF[2]);//change into array
 			for (k = 0; k < 3; k++){
 				gpsOutData[j][k] = Pos_KF[j][k]-mean_Pos_KF[k];
-			}
-			if(j == 7) {
-				test_time = LPTIM1->CNT;
 			}
 			uint8_t results[68] = "%10.10lf %10.10lf %10.10lf\r\n";
 			sprintf((char *) results, "%10.10lf %10.10lf %10.10lf\r\n", Pos_KF[j][0], Pos_KF[j][1], Pos_KF[j][2]);
@@ -333,20 +329,16 @@ int main(void)
 		}
 
 		// Done!
-		uint32_t end_time = LPTIM1->CNT;
-		uint32_t end_time2 = LPTIM1->CNT;
-		HAL_LPTIM_Counter_Stop(&hlptim1);
-		if(end_time == end_time2) {
-			uint8_t runtime[48];
-			sprintf((char *)runtime, "cycles @ 125 kHz: %5ld\r\n", end_time - start_time);
-			HAL_UART_Transmit(&hlpuart1, runtime, 30, 50000);
-			sprintf((char *)runtime, "sanity check: %5ld\r\n", test_time);
-			HAL_UART_Transmit(&hlpuart1, runtime, 22, 50000);
-			//fclose(ifp);
-			//fclose(ofp);
-			//printf("Wrote file %s\n", OUTFILE);
-		}
+		HAL_TIM_Base_Stop(&hlptim1);
+		uint8_t end_time = LPTIM_CNT;
+		uint16_t runtime[5];
+		sprintf(runtime, "%d\r\n", end_time - start_time);
+		HAL_UART_Transmit(&hlpuart1, runtime, 5, 50000);
+		//fclose(ifp);
+		//fclose(ofp);
+		//printf("Wrote file %s\n", OUTFILE);
 		return 0;
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -366,14 +358,12 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
-
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV4;
@@ -385,7 +375,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -399,40 +388,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-/**
-  * @brief LPTIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_LPTIM1_Init(void)
-{
-
-  /* USER CODE BEGIN LPTIM1_Init 0 */
-
-  /* USER CODE END LPTIM1_Init 0 */
-
-  /* USER CODE BEGIN LPTIM1_Init 1 */
-
-  /* USER CODE END LPTIM1_Init 1 */
-  hlptim1.Instance = LPTIM1;
-  hlptim1.Init.Clock.Source = LPTIM_CLOCKSOURCE_APBCLOCK_LPOSC;
-  hlptim1.Init.Clock.Prescaler = LPTIM_PRESCALER_DIV128;
-  hlptim1.Init.Trigger.Source = LPTIM_TRIGSOURCE_SOFTWARE;
-  hlptim1.Init.OutputPolarity = LPTIM_OUTPUTPOLARITY_HIGH;
-  hlptim1.Init.UpdateMode = LPTIM_UPDATE_IMMEDIATE;
-  hlptim1.Init.CounterSource = LPTIM_COUNTERSOURCE_INTERNAL;
-  hlptim1.Init.Input1Source = LPTIM_INPUT1SOURCE_GPIO;
-  hlptim1.Init.Input2Source = LPTIM_INPUT2SOURCE_GPIO;
-  if (HAL_LPTIM_Init(&hlptim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN LPTIM1_Init 2 */
-
-  /* USER CODE END LPTIM1_Init 2 */
-
 }
 
 /**
@@ -516,6 +471,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  Retargets the C library printf and scanf functions to the UART.
+  * @param  None
+  * @retval None
+  */
+
 PUTCHAR_PROTOTYPE
 {
   /* Place your implementation of fputc here */
@@ -566,3 +527,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
